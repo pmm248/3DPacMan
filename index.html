@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
-    <title>CS 4621: PPA3 - A-Maze-ing</title>
+    <title>PRAC-MAN 3D</title>
 
     <!-- Bootstrap -->
     <link href="css/bootstrap.min.css" rel="stylesheet">
@@ -20,10 +20,15 @@
     <script src="https://oss.maxcdn.com/html5shiv/3.7.3/html5shiv.min.js"></script>
     <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
     <![endif]-->
+    <script src="full_maze.js"></script>
+    <script src="mesh_data\mini_circle_mesh.js"></script>
+    <script src="mesh_data\ghost_mesh.js"></script>
+    <script src="mesh_data\pacman_mesh.js"></script>
+
 </head>
 <body>
 <div class="container">
-    <h1>CS 4621 PPA3 <span class="subtitle">Maze Crawler</span></h1>
+    <h1>PRAC-MAN <span class="subtitle">3D</span></h1>
 
     <div align="center">
         <canvas tabindex="1" id="webglCanvas" style="border: none; background-color: black;" width="800" height="600"></canvas>
@@ -42,33 +47,8 @@
                 <input type="text" id="eyeHeightSpinner" value="0.5">
             </td>
         </tr>
-        <tr>
-            <td align="right"><b>Maze:</b></td>
-            <td>
-                <textarea style="font-family: monospace" id="mazeTextArea" cols="40" rows="40">
-############################
-#************##************#
-#*####*#####*##*#####*####*#
-#*####*#####*##*#####*####*#
-#***##*******E********##***#
-###*##*##*########*##*##*###
-###*##*##*########*##*##*###
-#******##****##****##******#
-#*##########*##*##########*#
-#*##########*##*##########*#
-#**************************#
-############################
-</textarea>
-                <br>
-                <button id="updateMazeButton">Update Maze</button>
-            </td>
-        </tr>
     </table>
-
-    <h2>Additional Features Implemented</h2>
-
-    <p>We implemented the skybox, and added <a href="https://opengameart.org/content/interstellar-skybox" target="_blank">this</a> texture to it. We also included support for adding dropped objects to the maze. Enter asterisks (*) in the maze input wherever you want objects to appear. When the player walks to an object, the object disappears.</p>
-
+    
     <h2>Team Members</h2>
 
     <ul>
@@ -88,10 +68,7 @@
 <script id="vertexShader" type="x-shader/x-vertex">
     attribute vec3 position;
     attribute vec2 texture;
-    uniform vec3 cameraPosition;
-    uniform float heading;
     uniform mat4 tiltRotation;
-    uniform float fov;
     uniform mat4 projection;
     uniform mat4 rotation;
     uniform mat4 translation;
@@ -100,16 +77,15 @@
 
     void main() {
         vec4 posCopy = rotation * translation * vec4(position, 1.0);
-        vec4 newPosition = vec4(-posCopy.y, posCopy.z, -posCopy.x, posCopy.w);
+        posCopy = vec4(-posCopy.y, posCopy.z, -posCopy.x, posCopy.w);
+        gl_Position = projection * tiltRotation * vec4(posCopy);
         geom_texCoord = texture;
-        gl_Position = projection * tiltRotation * vec4(newPosition);
     }
 </script>
 
 <script id="fragmentShader" type="x-shader/x-fragment">
     precision highp float;
     varying vec2 geom_texCoord;
-    
 
     uniform sampler2D texture0;
     uniform sampler2D texture1;
@@ -151,6 +127,26 @@
         else if (surface == 7) {
             // Back Skybox
             gl_FragColor = texture2D(texture3, geom_texCoord);
+        }
+        else if (surface == 8) {
+            // Red ghost
+            gl_FragColor = vec4(1., 0., 0., 1.);
+        }
+        else if (surface == 9) {
+            // Blue ghost
+            gl_FragColor = vec4(0., 1., 1., 1.);
+        }
+        else if (surface == 10) {
+            // Pink ghost
+            gl_FragColor = vec4(1., .75, .85, 1.);
+        }
+        else if (surface == 11) {
+            // Orange ghost
+            gl_FragColor = vec4(1., .6, 0., 1.);
+        }
+        else if (surface == 12) {
+            // Pacman
+            gl_FragColor = vec4(1., 1., 0., 1.);
         }
     }
 </script>
@@ -219,7 +215,7 @@
     var floorIndices = [];
     var floorVertices = [];
     var floorTextures = [];
-    
+
     var len = 80;
     var zero = [-len/2, len/2, len/2];
     var one = [len/2, len/2, len/2];
@@ -244,10 +240,12 @@
     var lfSkyTextures = [1, 1, 0, 1, 0, 0, 1, 0];
     var rtSkyTextures = [0, 1, 1, 1, 1, 0, 0, 0];
     var bkSkyTextures = [1, 1, 0, 1, 0, 0, 1, 0];
-    
+
     var objIndices = [];
     var objVertices = [];
     var objTextures = [];
+
+    // Pacman position
     var currentPosition = [];
     var animateToPosition = [];
     var inMotion = false;
@@ -257,6 +255,69 @@
     var unitRotation = 0; // in cnt
     var targetHeadingCnt = 0;
     var stepSize = 0.1;
+
+    // Red ghost position
+    var redCurrentPosition = [];
+    var redAnimateToPosition = [];
+    var redInMotion = false;
+    var redInRotation = false;
+    var redUnitMotion = [];
+    var redCurrentHeadingCnt = 0;
+    var redUnitRotation = 0;
+    var redTargetHeadingCnt = 0;
+    var redStepSize = 0.05;
+
+    // Blue ghost
+    var blueCurrentPosition = [];
+    var blueAnimateToPosition = [];
+    var blueInMotion = false;
+    var blueInRotation = false;
+    var blueUnitMotion = [];
+    var blueCurrentHeadingCnt = 0;
+    var blueUnitRotation = 0;
+    var blueTargetHeadingCnt = 0;
+    var blueStepSize = 0.05;
+
+    // Pink ghost
+    var pinkCurrentPosition = [];
+    var pinkAnimateToPosition = [];
+    var pinkInMotion = false;
+    var pinkInRotation = false;
+    var pinkUnitMotion = [];
+    var pinkCurrentHeadingCnt = 0;
+    var pinkUnitRotation = 0;
+    var pinkTargetHeadingCnt = 0;
+    var pinkStepSize = 0.05;
+
+    // Orange ghost
+    var orangeCurrentPosition = [];
+    var orangeAnimateToPosition = [];
+    var orangeInMotion = false;
+    var orangeInRotation = false;
+    var orangeUnitMotion = [];
+    var orangeCurrentHeadingCnt = 0;
+    var orangeUnitRotation = 0;
+    var orangeTargetHeadingCnt = 0;
+    var orangeStepSize = 0.05;
+
+    var pinkVertices = [];
+    var pinkTextures = [];
+    var pinkIndices = [];
+    var redVertices = [];
+    var redTextures = [];
+    var redIndices = [];
+    var blueVertices = [];
+    var blueTextures = [];
+    var blueIndices = [];
+    var orangeVertices = [];
+    var orangeTextures = [];
+    var orangeIndices = [];
+
+    var pacmanVertices = [];
+    var pacmanTextures = [];
+    var pacmanIndices = [];
+
+
     function updateMazeMesh() {
         // 1 is a wall 0 is the path to freedom
         // each cube is length 1
@@ -347,29 +408,127 @@
                 if (maze.data[x][y] == 2) {
                     var cX = x + 0.5;
                     var cY = y + 0.5;
-                    var cZ = 0.5;
+                    var cZ = 0.2;
                     var dX = 0.1;
                     var dY = 0.1;
                     var dZ = Math.sqrt(2)*0.1;
                     var initLength = objVertices.length/3;
-                    var bar = [0, 0, dZ, -dX, dY, 0, -dX, -dY, 0, dX, -dY, 0, dX, dY, 0, 0, 0, -dZ];
-                    for (var i = 0; i < bar.length; i++) {
-                        if (i % 3 == 0) {
-                            bar[i] += cX;
+                    var circleScaled = circle_vertices.map(function(x) {return x * .1});
+                    for (var i = 0; i < circleScaled.length; i++){
+                    	if (i % 3 == 0) {
+                            circleScaled[i] += cX;
                         }
                         else if ((i-1) % 3 == 0) {
-                            bar[i] += cY;
+                            circleScaled[i] += cY;
                         }
                         else if ((i-2) % 3 == 0) {
-                            bar[i] += cZ;
+                            circleScaled[i] += cZ;
                         }
                     }
-                    objVertices = objVertices.concat(bar);
-                    var foo = [0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1, 5, 2, 1, 5, 3, 2, 5, 4, 3, 5, 1, 4].map(function(x) { return x + initLength; });
+                    objVertices = objVertices.concat(circleScaled);
+                    var foo = circle_indices.map(function(x) { return x + initLength; });
                     objIndices = objIndices.concat(foo);
                 }
+
+                // ADD POWER PELLETS.
             }
         }
+    }
+
+    function updateGhost(color) {
+        var cX;
+        var cY;
+        if (color == "red") {
+            cX = redCurrentPosition[0]+0.5;
+            cY = redCurrentPosition[1]+0.5;
+        } else if (color == "blue") {
+            cX = blueCurrentPosition[0] + 0.5;
+            cY = blueCurrentPosition[1] + 0.5;
+        } else if (color == "pink") {
+            cX = pinkCurrentPosition[0] + 0.5;
+            cY = pinkCurrentPosition[1] + 0.5;
+        } else if (color == "orange") {
+            cX = orangeCurrentPosition[0] + 0.5;
+            cY = orangeCurrentPosition[1] + 0.5;
+        } else {
+            return;
+        }
+
+        var cZ = 0;
+        var dX = 0.2;
+        var dY = 0.2;
+        var dZ = Math.sqrt(2)*0.2;
+        var bar = ghost_vertices.map(function(x) {return x * .015; });
+        for (var i = 0; i < bar.length; i++) {
+            if (i % 3 == 0) {
+                bar[i] += cX;
+            }
+            else if ((i - 1) % 3 == 0) {
+                bar[i] += cY;
+            }
+            else if ((i - 2) % 3 == 0) {
+                bar[i] += cZ;
+            }
+        }
+
+        // TODO: GET RID OF REDUNDANCY yeah KARUN karen cajun car VROOM VROOM
+        if (color == "red") {
+            redVertices = bar;
+            redIndices = ghost_indices;
+        } else if (color == "blue") {
+            blueVertices = bar;
+            blueIndices = ghost_indices;
+        } else if (color == "pink") {
+            pinkVertices = bar;
+            pinkIndices = ghost_indices;
+        } else if (color == "orange") {
+            orangeVertices = bar;
+            orangeIndices = ghost_indices;
+        }
+    }
+
+    function updateGhosts() {
+        redVertices = [];
+        redTextures = [];
+        redIndices = [];
+        blueVertices = [];
+        blueTextures = [];
+        blueIndices = [];
+        pinkVertices = [];
+        pinkTextures = [];
+        pinkIndices = [];
+        orangeVertices = [];
+        orangeTextures = [];
+        orangeIndices = [];
+
+        updateGhost("red");
+        updateGhost("blue");
+        updateGhost("pink");
+        updateGhost("orange");
+    }
+
+    // TODO CHANGE NAME
+    function updateTrashlee() {
+        pacmanTextures = [];
+        var cX = currentPosition[0] + 0.5;
+        var cY = currentPosition[1] + 0.5;
+        var cZ = .1;
+        var dX = 0.5;
+        var dY = 0.5;
+        var dZ = Math.sqrt(2) * 0.3;
+        pacmanVertices = pac_vertices.map(function(x){ return x * .3;});
+        for (var i = 0; i < pacmanVertices.length; i++) {
+            if (i % 3 == 0) {
+                pacmanVertices[i] += cX;
+            }
+            else if ((i - 1) % 3 == 0) {
+                pacmanVertices[i] += cY;
+            }
+            else if ((i - 2) % 3 == 0) {
+                pacmanVertices[i] += cZ;
+            }
+        }
+        pacmanIndices = pac_indices;
     }
 
     function createTexture(gl, image) {
@@ -382,7 +541,7 @@
         return texture;
     }
 
-    function runCanvas(canvasName, vertexShaderName, fragmentShaderName, prepareProgram) {
+    function runCanvas(canvasName, vertexShaderName, fragmentShaderName) {
         var gl = initializeWebGL(canvasName);
         var program = createGlslProgram(gl, vertexShaderName, fragmentShaderName);
         ["texture0", "texture1", "texture2", "texture3", "texture4", "texture5", "texture6"].forEach(function(name) {
@@ -391,29 +550,189 @@
 
         var wallTexture = createTexture(gl, queue.getResult("wall", false));
         var floorTexture = createTexture(gl, queue.getResult("floor", false));
-        
+
         var tpSkyTexture = createTexture(gl, queue.getResult("tpSky", false));
         var bkSkyTexture = createTexture(gl, queue.getResult("bkSky", false));
         var rtSkyTexture = createTexture(gl, queue.getResult("rtSky", false));
         var lfSkyTexture = createTexture(gl, queue.getResult("lfSky", false));
         var ftSkyTexture = createTexture(gl, queue.getResult("ftSky", false));
 
+        gl.useProgram(program);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, wallTexture);
+        gl.uniform1i(program.texture0, 0);
+
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, floorTexture);
+        gl.uniform1i(program.texture1, 1);
+
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, ftSkyTexture);
+        gl.uniform1i(program.texture2, 2);
+
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, bkSkyTexture);
+        gl.uniform1i(program.texture3, 3);
+
+        gl.activeTexture(gl.TEXTURE4);
+        gl.bindTexture(gl.TEXTURE_2D, lfSkyTexture);
+        gl.uniform1i(program.texture4, 4);
+
+        gl.activeTexture(gl.TEXTURE5);
+        gl.bindTexture(gl.TEXTURE_2D, rtSkyTexture);
+        gl.uniform1i(program.texture5, 5);
+
+        gl.activeTexture(gl.TEXTURE6);
+        gl.bindTexture(gl.TEXTURE_2D, tpSkyTexture);
+        gl.uniform1i(program.texture6, 6);
+
+        var tpSkyVertexArray = new Float32Array(tpSkyVertices);
+        var tpSkyVertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, tpSkyVertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, tpSkyVertexArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        var ftSkyVertexArray = new Float32Array(ftSkyVertices);
+        var ftSkyVertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, ftSkyVertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, ftSkyVertexArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        var lfSkyVertexArray = new Float32Array(lfSkyVertices);
+        var lfSkyVertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, lfSkyVertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, lfSkyVertexArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        var rtSkyVertexArray = new Float32Array(rtSkyVertices);
+        var rtSkyVertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, rtSkyVertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, rtSkyVertexArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        var bkSkyVertexArray = new Float32Array(bkSkyVertices);
+        var bkSkyVertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, bkSkyVertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, bkSkyVertexArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        var tpSkyTextureArray = new Float32Array(tpSkyTextures);
+        var tpSkyTextureBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, tpSkyTextureBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, tpSkyTextureArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        var ftSkyTextureArray = new Float32Array(ftSkyTextures);
+        var ftSkyTextureBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, ftSkyTextureBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, ftSkyTextureArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        var lfSkyTextureArray = new Float32Array(lfSkyTextures);
+        var lfSkyTextureBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, lfSkyTextureBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, lfSkyTextureArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        var rtSkyTextureArray = new Float32Array(rtSkyTextures);
+        var rtSkyTextureBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, rtSkyTextureBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, rtSkyTextureArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        var bkSkyTextureArray = new Float32Array(bkSkyTextures);
+        var bkSkyTextureBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, bkSkyTextureBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, bkSkyTextureArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        var tpSkyIndexArray = new Uint16Array(tpSkyIndices);
+        var tpSkyIndexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tpSkyIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, tpSkyIndexArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+        var ftSkyIndexArray = new Uint16Array(ftSkyIndices);
+        var ftSkyIndexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ftSkyIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, ftSkyIndexArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+        var lfSkyIndexArray = new Uint16Array(lfSkyIndices);
+        var lfSkyIndexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, lfSkyIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, lfSkyIndexArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+        var rtSkyIndexArray = new Uint16Array(rtSkyIndices);
+        var rtSkyIndexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, rtSkyIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, rtSkyIndexArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+        var bkSkyIndexArray = new Uint16Array(bkSkyIndices);
+        var bkSkyIndexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bkSkyIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, bkSkyIndexArray, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+        var vertexArray;
+        var vertexBuffer = gl.createBuffer();
+        var floorVertexArray;
+        var floorVertexBuffer = gl.createBuffer();
+        var objVertexArray;
+        var objVertexBuffer = gl.createBuffer();
+        var redVertexArray;
+        var redVertexBuffer = gl.createBuffer();
+        var blueVertexArray;
+        var blueVertexBuffer = gl.createBuffer();
+        var pinkVertexArray;
+        var pinkVertexBuffer = gl.createBuffer();
+        var orangeVertexArray;
+        var orangeVertexBuffer = gl.createBuffer();
+        var pacmanVertexArray;
+        var pacmanVertexBuffer = gl.createBuffer();
+        var textureArray;
+        var textureBuffer = gl.createBuffer();
+        var floorTextureArray;
+        var floorTextureBuffer = gl.createBuffer();
+        var indexArray;
+        var indexBuffer = gl.createBuffer();
+        var floorIndexArray;
+        var floorIndexBuffer = gl.createBuffer();
+        var objIndexArray;
+        var objIndexBuffer = gl.createBuffer();
+        var redIndexArray;
+        var redIndexBuffer = gl.createBuffer();
+        var blueIndexArray;
+        var blueIndexBuffer = gl.createBuffer();
+        var pinkIndexArray;
+        var pinkIndexBuffer = gl.createBuffer();
+        var orangeIndexArray;
+        var orangeIndexBuffer = gl.createBuffer();
+        var pacmanIndexArray;
+        var pacmanIndexBuffer = gl.createBuffer();
+
+        var surfaceUniform = gl.getUniformLocation(program, "surface");
+        var positionAttribute = gl.getAttribLocation(program, "position");
+        gl.enableVertexAttribArray(positionAttribute);
+        var textureAttribute = gl.getAttribLocation(program, "texture");
+        gl.enableVertexAttribArray(textureAttribute);
+
         function updateWebGL() {
-            gl.clearColor(0.0, 0.00, 0.00, 1.0);
+            gl.clearColor(0.0, 0.0, 0.0, 1.0);
             gl.clear(gl.COLOR_BUFFER_BIT);
-            gl.enable(gl.DEPTH_TEST);
-            gl.depthFunc(gl.LEQUAL);
-
-            gl.useProgram(program);
-
-            prepareProgram(gl, program);
 
             // UPDATE CURRENT POSITION IF IN MOTION
             if (inMotion) {
                 currentPosition[0] += unitMotion[0];
                 currentPosition[1] += unitMotion[1];
                 if (Math.abs(animateToPosition[0] - currentPosition[0]) < 0.01 && Math.abs(animateToPosition[1] - currentPosition[1]) < 0.01) {
-                    currentPosition = animateToPosition;
+                    currentPosition[0] = animateToPosition[0];
+                    currentPosition[1] = animateToPosition[1];
                     inMotion = false;
                 }
             }
@@ -425,310 +744,280 @@
                 }
             }
 
-            gl.activeTexture(gl.TEXTURE0);
-            gl.bindTexture(gl.TEXTURE_2D, wallTexture);
-            gl.uniform1i(program.texture0, 0);
+            // UPDATE RED GHOST POSITION/ROTATION
+            if (redInMotion) {
+                redCurrentPosition[0] += redUnitMotion[0];
+                redCurrentPosition[1] += redUnitMotion[1];
+                if (Math.abs(redAnimateToPosition[0] - redCurrentPosition[0]) < 0.01 && Math.abs(redAnimateToPosition[1] - redCurrentPosition[1]) < 0.01) {
+                    redCurrentPosition[0] = redAnimateToPosition[0];
+                    redCurrentPosition[1] = redAnimateToPosition[1];
+                    redInMotion = false;
+                }
+            }
+            if (redInRotation) {
+                redCurrentHeadingCnt += redUnitRotation;
+                if (Math.abs(redCurrentHeadingCnt - redTargetHeadingCnt) < 0.01) {
+                    redCurrentHeadingCnt = (redTargetHeadingCnt+4) % 4;
+                    redInRotation = false;
+                }
+            }
 
-            gl.activeTexture(gl.TEXTURE1);
-            gl.bindTexture(gl.TEXTURE_2D, floorTexture);
-            gl.uniform1i(program.texture1, 1);
-            
-            gl.activeTexture(gl.TEXTURE2);
-            gl.bindTexture(gl.TEXTURE_2D, ftSkyTexture);
-            gl.uniform1i(program.texture2, 2);
-            
-            gl.activeTexture(gl.TEXTURE3);
-            gl.bindTexture(gl.TEXTURE_2D, bkSkyTexture);
-            gl.uniform1i(program.texture3, 3);
-            
-            gl.activeTexture(gl.TEXTURE4);
-            gl.bindTexture(gl.TEXTURE_2D, lfSkyTexture);
-            gl.uniform1i(program.texture4, 4);
-            
-            gl.activeTexture(gl.TEXTURE5);
-            gl.bindTexture(gl.TEXTURE_2D, rtSkyTexture);
-            gl.uniform1i(program.texture5, 5);
-            
-            gl.activeTexture(gl.TEXTURE6);
-            gl.bindTexture(gl.TEXTURE_2D, tpSkyTexture);
-            gl.uniform1i(program.texture6, 6);
-            
-            var tpSkyVertexArray = new Float32Array(tpSkyVertices);
-            var tpSkyVertexBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, tpSkyVertexBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, tpSkyVertexArray, gl.STATIC_DRAW);
-            gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
-            var ftSkyVertexArray = new Float32Array(ftSkyVertices);
-            var ftSkyVertexBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, ftSkyVertexBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, ftSkyVertexArray, gl.STATIC_DRAW);
-            gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
-            var lfSkyVertexArray = new Float32Array(lfSkyVertices);
-            var lfSkyVertexBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, lfSkyVertexBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, lfSkyVertexArray, gl.STATIC_DRAW);
-            gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
-            var rtSkyVertexArray = new Float32Array(rtSkyVertices);
-            var rtSkyVertexBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, rtSkyVertexBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, rtSkyVertexArray, gl.STATIC_DRAW);
-            gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
-            var bkSkyVertexArray = new Float32Array(bkSkyVertices);
-            var bkSkyVertexBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, bkSkyVertexBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, bkSkyVertexArray, gl.STATIC_DRAW);
-            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+            // UPDATE PINK GHOST POSITION/ROTATION
+            if (pinkInMotion) {
+                pinkCurrentPosition[0] += pinkUnitMotion[0];
+                pinkCurrentPosition[1] += pinkUnitMotion[1];
+                if (Math.abs(pinkAnimateToPosition[0] - pinkCurrentPosition[0]) < 0.01 && Math.abs(pinkAnimateToPosition[1] - pinkCurrentPosition[1]) < 0.01) {
+                    pinkCurrentPosition[0] = pinkAnimateToPosition[0];
+                    pinkCurrentPosition[1] = pinkAnimateToPosition[1];
+                    pinkInMotion = false;
+                }
+            }
+            if (pinkInRotation) {
+                pinkCurrentHeadingCnt += pinkUnitRotation;
+                if (Math.abs(pinkCurrentHeadingCnt - pinkTargetHeadingCnt) < 0.01) {
+                    pinkCurrentHeadingCnt = (pinkTargetHeadingCnt+4) % 4;
+                    pinkInRotation = false;
+                }
+            }
 
-            var vertexArray = new Float32Array(vertices);
-            var vertexBuffer = gl.createBuffer();
+            // UPDATE BLUE GHOST POSITION/ROTATION
+            if (blueInMotion) {
+                blueCurrentPosition[0] += blueUnitMotion[0];
+                blueCurrentPosition[1] += blueUnitMotion[1];
+                if (Math.abs(blueAnimateToPosition[0] - blueCurrentPosition[0]) < 0.01 && Math.abs(blueAnimateToPosition[1] - blueCurrentPosition[1]) < 0.01) {
+                    blueCurrentPosition[0] = blueAnimateToPosition[0];
+                    blueCurrentPosition[1] = blueAnimateToPosition[1];
+                    blueInMotion = false;
+                }
+            }
+            if (blueInRotation) {
+                blueCurrentHeadingCnt += blueUnitRotation;
+                if (Math.abs(blueCurrentHeadingCnt - blueTargetHeadingCnt) < 0.01) {
+                    blueCurrentHeadingCnt = (blueTargetHeadingCnt+4) % 4;
+                    blueInRotation = false;
+                }
+            }
+
+            // UPDATE ORANGE GHOST POSITION/ROTATION
+            if (orangeInMotion) {
+                orangeCurrentPosition[0] += orangeUnitMotion[0];
+                orangeCurrentPosition[1] += orangeUnitMotion[1];
+                if (Math.abs(orangeAnimateToPosition[0] - orangeCurrentPosition[0]) < 0.01 && Math.abs(orangeAnimateToPosition[1] - orangeCurrentPosition[1]) < 0.01) {
+                    orangeCurrentPosition[0] = orangeAnimateToPosition[0];
+                    orangeCurrentPosition[1] = orangeAnimateToPosition[1];
+                    orangeInMotion = false;
+                }
+            }
+            if (orangeInRotation) {
+                orangeCurrentHeadingCnt += orangeUnitRotation;
+                if (Math.abs(orangeCurrentHeadingCnt - orangeTargetHeadingCnt) < 0.01) {
+                    orangeCurrentHeadingCnt = (orangeTargetHeadingCnt+4) % 4;
+                    orangeInRotation = false;
+                }
+            }
+
+
+            updateGhosts();
+            updateTrashlee();
+
+            vertexArray = new Float32Array(vertices);
             gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
             gl.bufferData(gl.ARRAY_BUFFER, vertexArray, gl.STATIC_DRAW);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
-            var tpSkyTextureArray = new Float32Array(tpSkyTextures);
-            var tpSkyTextureBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, tpSkyTextureBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, tpSkyTextureArray, gl.STATIC_DRAW);
-            gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
-            var ftSkyTextureArray = new Float32Array(ftSkyTextures);
-            var ftSkyTextureBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, ftSkyTextureBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, ftSkyTextureArray, gl.STATIC_DRAW);
-            gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
-            var lfSkyTextureArray = new Float32Array(lfSkyTextures);
-            var lfSkyTextureBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, lfSkyTextureBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, lfSkyTextureArray, gl.STATIC_DRAW);
-            gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
-            var rtSkyTextureArray = new Float32Array(rtSkyTextures);
-            var rtSkyTextureBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, rtSkyTextureBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, rtSkyTextureArray, gl.STATIC_DRAW);
-            gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
-            var bkSkyTextureArray = new Float32Array(bkSkyTextures);
-            var bkSkyTextureBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, bkSkyTextureBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, bkSkyTextureArray, gl.STATIC_DRAW);
-            gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
-            var floorVertexArray = new Float32Array(floorVertices);
-            var floorVertexBuffer = gl.createBuffer();
+            floorVertexArray = new Float32Array(floorVertices);
             gl.bindBuffer(gl.ARRAY_BUFFER, floorVertexBuffer);
             gl.bufferData(gl.ARRAY_BUFFER, floorVertexArray, gl.STATIC_DRAW);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
-            var objVertexArray = new Float32Array(objVertices);
-            var objVertexBuffer = gl.createBuffer();
+            objVertexArray = new Float32Array(objVertices);
             gl.bindBuffer(gl.ARRAY_BUFFER, objVertexBuffer);
             gl.bufferData(gl.ARRAY_BUFFER, objVertexArray, gl.STATIC_DRAW);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
-            var textureArray = new Float32Array(textures);
-            var textureBuffer = gl.createBuffer();
+            redVertexArray = new Float32Array(redVertices);
+            gl.bindBuffer(gl.ARRAY_BUFFER, redVertexBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, redVertexArray, gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+            blueVertexArray = new Float32Array(blueVertices);
+            gl.bindBuffer(gl.ARRAY_BUFFER, blueVertexBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, blueVertexArray, gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+            pinkVertexArray = new Float32Array(pinkVertices);
+            gl.bindBuffer(gl.ARRAY_BUFFER, pinkVertexBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, pinkVertexArray, gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+            orangeVertexArray = new Float32Array(orangeVertices);
+            gl.bindBuffer(gl.ARRAY_BUFFER, orangeVertexBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, orangeVertexArray, gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+            pacmanVertexArray = new Float32Array(pacmanVertices);
+            gl.bindBuffer(gl.ARRAY_BUFFER, pacmanVertexBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, pacmanVertexArray, gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+            textureArray = new Float32Array(textures);
             gl.bindBuffer(gl.ARRAY_BUFFER, textureBuffer);
             gl.bufferData(gl.ARRAY_BUFFER, textureArray, gl.STATIC_DRAW);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
-            var floorTextureArray = new Float32Array(floorTextures);
-            var floorTextureBuffer = gl.createBuffer();
+            floorTextureArray = new Float32Array(floorTextures);
             gl.bindBuffer(gl.ARRAY_BUFFER, floorTextureBuffer);
             gl.bufferData(gl.ARRAY_BUFFER, floorTextureArray, gl.STATIC_DRAW);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
-            var indexArray = new Uint16Array(indices);
-            var indexBuffer = gl.createBuffer();
+            indexArray = new Uint16Array(indices);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexArray, gl.STATIC_DRAW);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-            
-            var tpSkyIndexArray = new Uint16Array(tpSkyIndices);
-            var tpSkyIndexBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tpSkyIndexBuffer);
-            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, tpSkyIndexArray, gl.STATIC_DRAW);
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-            
-            var ftSkyIndexArray = new Uint16Array(ftSkyIndices);
-            var ftSkyIndexBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ftSkyIndexBuffer);
-            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, ftSkyIndexArray, gl.STATIC_DRAW);
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-            
-            var lfSkyIndexArray = new Uint16Array(lfSkyIndices);
-            var lfSkyIndexBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, lfSkyIndexBuffer);
-            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, lfSkyIndexArray, gl.STATIC_DRAW);
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-            
-            var rtSkyIndexArray = new Uint16Array(rtSkyIndices);
-            var rtSkyIndexBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, rtSkyIndexBuffer);
-            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, rtSkyIndexArray, gl.STATIC_DRAW);
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-            
-            var bkSkyIndexArray = new Uint16Array(bkSkyIndices);
-            var bkSkyIndexBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bkSkyIndexBuffer);
-            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, bkSkyIndexArray, gl.STATIC_DRAW);
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 
-            var floorIndexArray = new Uint16Array(floorIndices);
-            var floorIndexBuffer = gl.createBuffer();
+            floorIndexArray = new Uint16Array(floorIndices);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, floorIndexBuffer);
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, floorIndexArray, gl.STATIC_DRAW);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 
-            var objIndexArray = new Uint16Array(objIndices);
-            var objIndexBuffer = gl.createBuffer();
+            objIndexArray = new Uint16Array(objIndices);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, objIndexBuffer);
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, objIndexArray, gl.STATIC_DRAW);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 
+            redIndexArray = new Uint16Array(redIndices);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, redIndexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, redIndexArray, gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+            blueIndexArray = new Uint16Array(blueIndices);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, blueIndexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, blueIndexArray, gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+            pinkIndexArray = new Uint16Array(pinkIndices);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, pinkIndexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, pinkIndexArray, gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+            orangeIndexArray = new Uint16Array(orangeIndices);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, orangeIndexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, orangeIndexArray, gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+            pacmanIndexArray = new Uint16Array(pacmanIndices);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, pacmanIndexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, pacmanIndexArray, gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
             // DRAW THINGS -----------------------------------------------------------
-            
+
             //DRAW TOP SKY BOX:
-            var tpSkyLocation = gl.getUniformLocation(program, "surface");
-            gl.uniform1i(tpSkyLocation, 3);
-            
+            gl.uniform1i(surfaceUniform, 3);
+
             // SET POSITION OF TOP SKY BOX
             gl.bindBuffer(gl.ARRAY_BUFFER, tpSkyVertexBuffer);
-            var tpSkyPositionLocation = gl.getAttribLocation(program, "position");
-            gl.enableVertexAttribArray(tpSkyPositionLocation);
-            gl.vertexAttribPointer(tpSkyPositionLocation, 3, gl.FLOAT, false, 4*3, 0);
+            gl.vertexAttribPointer(positionAttribute, 3, gl.FLOAT, false, 4*3, 0);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
+
             // TEXTURE ATTRIBUTE
             gl.bindBuffer(gl.ARRAY_BUFFER, tpSkyTextureBuffer);
-            var tpSkyTextureLocation = gl.getAttribLocation(program, "texture");
-            gl.enableVertexAttribArray(tpSkyTextureLocation);
-            gl.vertexAttribPointer(tpSkyTextureLocation, 2, gl.FLOAT, false, 4*2, 0);
+            gl.vertexAttribPointer(textureAttribute, 2, gl.FLOAT, false, 4*2, 0);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
+
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tpSkyIndexBuffer);
             gl.drawElements(gl.TRIANGLES, tpSkyIndices.length, gl.UNSIGNED_SHORT, 0);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-            
+
             // ----------------------------------------------------------------------------
-            
+
             //DRAW FRONT SKY BOX:
-            var ftSkyLocation = gl.getUniformLocation(program, "surface");
-            gl.uniform1i(ftSkyLocation, 6);
-            
+            gl.uniform1i(surfaceUniform, 6);
+
             // SET POSITION OF FRONT SKY BOX
             gl.bindBuffer(gl.ARRAY_BUFFER, ftSkyVertexBuffer);
-            var ftSkyPositionLocation = gl.getAttribLocation(program, "position");
-            gl.enableVertexAttribArray(ftSkyPositionLocation);
-            gl.vertexAttribPointer(ftSkyPositionLocation, 3, gl.FLOAT, false, 4*3, 0);
+            gl.vertexAttribPointer(positionAttribute, 3, gl.FLOAT, false, 4*3, 0);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
+
             // TEXTURE ATTRIBUTE
             gl.bindBuffer(gl.ARRAY_BUFFER, ftSkyTextureBuffer);
-            var ftSkyTextureLocation = gl.getAttribLocation(program, "texture");
-            gl.enableVertexAttribArray(ftSkyTextureLocation);
-            gl.vertexAttribPointer(ftSkyTextureLocation, 2, gl.FLOAT, false, 4*2, 0);
+            gl.vertexAttribPointer(textureAttribute, 2, gl.FLOAT, false, 4*2, 0);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
+
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ftSkyIndexBuffer);
             gl.drawElements(gl.TRIANGLES, ftSkyIndices.length, gl.UNSIGNED_SHORT, 0);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-            
+
             // ----------------------------------------------------------------------------
-            
+
             //DRAW RIGHT SKY BOX:
-            var rtSkyLocation = gl.getUniformLocation(program, "surface");
-            gl.uniform1i(rtSkyLocation, 5);
-            
+            gl.uniform1i(surfaceUniform, 5);
+
             // SET POSITION OF RIGHT SKY BOX
             gl.bindBuffer(gl.ARRAY_BUFFER, rtSkyVertexBuffer);
-            var rtSkyPositionLocation = gl.getAttribLocation(program, "position");
-            gl.enableVertexAttribArray(rtSkyPositionLocation);
-            gl.vertexAttribPointer(rtSkyPositionLocation, 3, gl.FLOAT, false, 4*3, 0);
+            gl.vertexAttribPointer(positionAttribute, 3, gl.FLOAT, false, 4*3, 0);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
+
             // TEXTURE ATTRIBUTE
             gl.bindBuffer(gl.ARRAY_BUFFER, rtSkyTextureBuffer);
-            var rtSkyTextureLocation = gl.getAttribLocation(program, "texture");
-            gl.enableVertexAttribArray(rtSkyTextureLocation);
-            gl.vertexAttribPointer(rtSkyTextureLocation, 2, gl.FLOAT, false, 4*2, 0);
+            gl.vertexAttribPointer(textureAttribute, 2, gl.FLOAT, false, 4*2, 0);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
+
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, rtSkyIndexBuffer);
             gl.drawElements(gl.TRIANGLES, rtSkyIndices.length, gl.UNSIGNED_SHORT, 0);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-            
+
             // ----------------------------------------------------------------------------
-            
+
             //DRAW LEFT SKY BOX:
-            var lfSkyLocation = gl.getUniformLocation(program, "surface");
-            gl.uniform1i(rtSkyLocation, 4);
-            
+            gl.uniform1i(surfaceUniform, 4);
+
             // SET POSITION OF LEFT SKY BOX
             gl.bindBuffer(gl.ARRAY_BUFFER, lfSkyVertexBuffer);
-            var lfSkyPositionLocation = gl.getAttribLocation(program, "position");
-            gl.enableVertexAttribArray(lfSkyPositionLocation);
-            gl.vertexAttribPointer(lfSkyPositionLocation, 3, gl.FLOAT, false, 4*3, 0);
+            gl.vertexAttribPointer(positionAttribute, 3, gl.FLOAT, false, 4*3, 0);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
+
             // TEXTURE ATTRIBUTE
             gl.bindBuffer(gl.ARRAY_BUFFER, lfSkyTextureBuffer);
-            var lfSkyTextureLocation = gl.getAttribLocation(program, "texture");
-            gl.enableVertexAttribArray(lfSkyTextureLocation);
-            gl.vertexAttribPointer(lfSkyTextureLocation, 2, gl.FLOAT, false, 4*2, 0);
+            gl.vertexAttribPointer(textureAttribute, 2, gl.FLOAT, false, 4*2, 0);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
+
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, lfSkyIndexBuffer);
             gl.drawElements(gl.TRIANGLES, lfSkyIndices.length, gl.UNSIGNED_SHORT, 0);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-            
+
             // ----------------------------------------------------------------------------
-            
+
             //DRAW BACK SKY BOX:
-            var bkSkyLocation = gl.getUniformLocation(program, "surface");
-            gl.uniform1i(bkSkyLocation, 7);
-            
+            gl.uniform1i(surfaceUniform, 7);
+
             // SET POSITION OF BACK SKY BOX
             gl.bindBuffer(gl.ARRAY_BUFFER, bkSkyVertexBuffer);
-            var bkSkyPositionLocation = gl.getAttribLocation(program, "position");
-            gl.enableVertexAttribArray(bkSkyPositionLocation);
-            gl.vertexAttribPointer(bkSkyPositionLocation, 3, gl.FLOAT, false, 4*3, 0);
+            gl.vertexAttribPointer(positionAttribute, 3, gl.FLOAT, false, 4*3, 0);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
+
             // TEXTURE ATTRIBUTE
             gl.bindBuffer(gl.ARRAY_BUFFER, bkSkyTextureBuffer);
-            var bkSkyTextureLocation = gl.getAttribLocation(program, "texture");
-            gl.enableVertexAttribArray(bkSkyTextureLocation);
-            gl.vertexAttribPointer(bkSkyTextureLocation, 2, gl.FLOAT, false, 4*2, 0);
+            gl.vertexAttribPointer(textureAttribute, 2, gl.FLOAT, false, 4*2, 0);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
-            
+
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bkSkyIndexBuffer);
             gl.drawElements(gl.TRIANGLES, bkSkyIndices.length, gl.UNSIGNED_SHORT, 0);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-            
+
             // ----------------------------------------------------------------------------
-            
+
             // DRAW WALLS:
-            var wallLocation = gl.getUniformLocation(program, "surface");
-            gl.uniform1i(wallLocation, 1);
-            
+            gl.uniform1i(surfaceUniform, 1);
+
             // POSITION ATTRIBUTE
             gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-            var positionLocation = gl.getAttribLocation(program, "position");
-            gl.enableVertexAttribArray(positionLocation);
-            gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 4*3, 0);
+            gl.vertexAttribPointer(positionAttribute, 3, gl.FLOAT, false, 4*3, 0);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
             // TEXTURE ATTRIBUTE
             gl.bindBuffer(gl.ARRAY_BUFFER, textureBuffer);
-            var textureLocation = gl.getAttribLocation(program, "texture");
-            gl.enableVertexAttribArray(textureLocation);
-            gl.vertexAttribPointer(textureLocation, 2, gl.FLOAT, false, 4*2, 0);
+            gl.vertexAttribPointer(textureAttribute, 2, gl.FLOAT, false, 4*2, 0);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
             var projMat = mat4.create();
@@ -738,22 +1027,22 @@
 
             var angle = -(currentHeadingCnt * Math.PI/2);
             var rot = mat4.fromValues(Math.cos(angle), -Math.sin(angle), 0, 0,
-                                       Math.sin(angle), Math.cos(angle), 0, 0,
-                                       0, 0, 1, 0,
-                                       0, 0, 0, 1);
+                Math.sin(angle), Math.cos(angle), 0, 0,
+                0, 0, 1, 0,
+                0, 0, 0, 1);
             mat4.transpose(rot, rot);
             var rotationLocation = gl.getUniformLocation(program, "rotation");
             gl.uniformMatrix4fv(rotationLocation, false, rot);
-            
+
             var tilt = getEyeHeight() > 1.0 ? (Math.PI/2) : 0.0;
             var tiltRot = mat4.fromValues(1, 0, 0, 0,
-                                       0, Math.cos(tilt), -Math.sin(tilt), 0,
-                                       0, Math.sin(tilt), Math.cos(tilt), 0,
-                                       0, 0, 0, 1);
+                0, Math.cos(tilt), -Math.sin(tilt), 0,
+                0, Math.sin(tilt), Math.cos(tilt), 0,
+                0, 0, 0, 1);
             mat4.transpose(tiltRot, tiltRot);
             var tiltRotationLocation = gl.getUniformLocation(program, "tiltRotation");
             gl.uniformMatrix4fv(tiltRotationLocation, false, tiltRot);
-            
+
             var trans = mat4.fromValues(1, 0, 0, -(currentPosition[0]+0.5),
                 0, 1, 0, -(currentPosition[1]+0.5),
                 0, 0, 1, -getEyeHeight(),
@@ -769,21 +1058,16 @@
             // ----------------------------------------------------------------------------
 
             // DRAW FLOOR
-            var floorLocation = gl.getUniformLocation(program, "surface");
-            gl.uniform1i(floorLocation, 0);
+            gl.uniform1i(surfaceUniform, 0);
 
             // SET POSITION OF FLOOR
             gl.bindBuffer(gl.ARRAY_BUFFER, floorVertexBuffer);
-            var floorPositionLocation = gl.getAttribLocation(program, "position");
-            gl.enableVertexAttribArray(floorPositionLocation);
-            gl.vertexAttribPointer(floorPositionLocation, 3, gl.FLOAT, false, 4*3, 0);
+            gl.vertexAttribPointer(positionAttribute, 3, gl.FLOAT, false, 4*3, 0);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
             // TEXTURE ATTRIBUTE
             gl.bindBuffer(gl.ARRAY_BUFFER, floorTextureBuffer);
-            var floorTextureLocation = gl.getAttribLocation(program, "texture");
-            gl.enableVertexAttribArray(floorTextureLocation);
-            gl.vertexAttribPointer(floorTextureLocation, 2, gl.FLOAT, false, 4*2, 0);
+            gl.vertexAttribPointer(textureAttribute, 2, gl.FLOAT, false, 4*2, 0);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, floorIndexBuffer);
@@ -793,28 +1077,119 @@
             // ---------------------------------------------------------------------------
 
             // DRAW OBJECTS
-            var objLocation = gl.getUniformLocation(program, "surface");
-            gl.uniform1i(objLocation, 2);
+            gl.uniform1i(surfaceUniform, 2);
 
             // SET POSITION OF OBJECTS
             gl.bindBuffer(gl.ARRAY_BUFFER, objVertexBuffer);
-            var objPositionLocation = gl.getAttribLocation(program, "position");
-            gl.enableVertexAttribArray(objPositionLocation);
-            gl.vertexAttribPointer(objPositionLocation, 3, gl.FLOAT, false, 4*3, 0);
+            gl.vertexAttribPointer(positionAttribute, 3, gl.FLOAT, false, 4*3, 0);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
             // DISABLE TEXTURE
-            var objTextureLocation = gl.getAttribLocation(program, "texture");
-            gl.disableVertexAttribArray(objTextureLocation);
+            gl.disableVertexAttribArray(textureAttribute);
 
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, objIndexBuffer);
             gl.drawElements(gl.TRIANGLES, objIndices.length, gl.UNSIGNED_SHORT, 0);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 
-            // ----------------------------------------------------------------------------
+            // ENABLE TEXTURE
+            gl.enableVertexAttribArray(textureAttribute);
 
-            gl.useProgram(null);
-            gl.disable(gl.DEPTH_TEST);
+            // ----------------------------------------------------------------------------
+            // Draw red ghost.
+            gl.uniform1i(surfaceUniform, 8);
+
+            // SET POSITION OF ghost.
+            gl.bindBuffer(gl.ARRAY_BUFFER, redVertexBuffer);
+            gl.vertexAttribPointer(positionAttribute, 3, gl.FLOAT, false, 4*3, 0);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+            // DISABLE TEXTURE
+            gl.disableVertexAttribArray(textureAttribute);
+
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, redIndexBuffer);
+            gl.drawElements(gl.TRIANGLES, redIndices.length, gl.UNSIGNED_SHORT, 0);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+            // ENABLE TEXTURE
+            gl.enableVertexAttribArray(textureAttribute);
+
+            // ----------------------------------------------------------------------------
+            // Draw blue ghost.
+            gl.uniform1i(surfaceUniform, 9);
+
+            // SET POSITION OF blue.
+            gl.bindBuffer(gl.ARRAY_BUFFER, blueVertexBuffer);
+            gl.vertexAttribPointer(positionAttribute, 3, gl.FLOAT, false, 4*3, 0);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+            // DISABLE TEXTURE
+            gl.disableVertexAttribArray(textureAttribute);
+
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, blueIndexBuffer);
+            gl.drawElements(gl.TRIANGLES, blueIndices.length, gl.UNSIGNED_SHORT, 0);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+            // ENABLE TEXTURE
+            gl.enableVertexAttribArray(textureAttribute);
+
+            // ----------------------------------------------------------------------------
+            // Draw pink ghost.
+            gl.uniform1i(surfaceUniform, 10);
+
+            // SET POSITION OF pink.
+            gl.bindBuffer(gl.ARRAY_BUFFER, pinkVertexBuffer);
+            gl.vertexAttribPointer(positionAttribute, 3, gl.FLOAT, false, 4*3, 0);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+            // DISABLE TEXTURE
+            gl.disableVertexAttribArray(textureAttribute);
+
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, pinkIndexBuffer);
+            gl.drawElements(gl.TRIANGLES, pinkIndices.length, gl.UNSIGNED_SHORT, 0);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+            // ENABLE TEXTURE
+            gl.enableVertexAttribArray(textureAttribute);
+
+            // ----------------------------------------------------------------------------
+            // Draw orange ghost.
+            gl.uniform1i(surfaceUniform, 11);
+
+            // SET POSITION OF orange.
+            gl.bindBuffer(gl.ARRAY_BUFFER, orangeVertexBuffer);
+            gl.vertexAttribPointer(positionAttribute, 3, gl.FLOAT, false, 4*3, 0);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+            // DISABLE TEXTURE
+            gl.disableVertexAttribArray(textureAttribute);
+
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, orangeIndexBuffer);
+            gl.drawElements(gl.TRIANGLES, orangeIndices.length, gl.UNSIGNED_SHORT, 0);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+            // ENABLE TEXTURE
+            gl.enableVertexAttribArray(textureAttribute);
+
+            // ----------------------------------------------------------------------------
+            // Draw pacman.
+            gl.uniform1i(surfaceUniform, 12);
+
+            // SET POSITION OF pacman.
+            gl.bindBuffer(gl.ARRAY_BUFFER, pacmanVertexBuffer);
+            gl.vertexAttribPointer(positionAttribute, 3, gl.FLOAT, false, 4*3, 0);
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+            // DISABLE TEXTURE
+            gl.disableVertexAttribArray(textureAttribute);
+
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, pacmanIndexBuffer);
+            gl.drawElements(gl.TRIANGLES, pacmanIndices.length, gl.UNSIGNED_SHORT, 0);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+            // ENABLE TEXTURE
+            gl.enableVertexAttribArray(textureAttribute);
+
+            // ----------------------------------------------------------------------------
 
             window.requestAnimationFrame(updateWebGL);
         }
@@ -826,9 +1201,7 @@
     var queue = new createjs.LoadQueue();
     // Step 2: Register the callback function.
     queue.on("complete", function() {
-        runCanvas("webglCanvas", "vertexShader", "fragmentShader", function(gl, program) {
-            // NO-OP
-        })
+        runCanvas("webglCanvas", "vertexShader", "fragmentShader");
     }, this);
     // Step 3: List the files you want to load, with their correponding ID.
     queue.loadManifest([
@@ -867,7 +1240,7 @@
         }
     ]);
 
-    
+
 
 </script>
 
@@ -893,7 +1266,7 @@
     }
 
     function getMazeStrings() {
-        return $("#mazeTextArea").val().trim().split(/\s/);
+        return mazeDescription.trim().split(/\s/);
     }
 
     function createMazeFromStrings(strings) {
@@ -901,12 +1274,6 @@
         var sizeX = strings[0].length;
 
         var x, y;
-        for(y=0;y<sizeY;y++) {
-            if (strings[y].length != sizeX) {
-                throw new Error("Mesh is not a rectangle!");
-            }
-        }
-
         var data = [];
         for (x = 0; x < sizeX; x++) {
             var a = [];
@@ -925,6 +1292,24 @@
                     data[x][y] = 1;
                 } else if (c == '*') {
                     data[x][y] = 2;
+                } else if (c == '!') {
+                    data[x][y] = 3;
+                } else if (c == 'R') {
+                    data[x][y] = 4;
+                    redCurrentHeadingCnt = 1;
+                    redCurrentPosition = [x, y];
+                } else if (c == 'B') {
+                    data[x][y] = 5;
+                    blueCurrentHeadingCnt = 1;
+                    blueCurrentPosition = [x, y];
+                } else if (c == 'P') {
+                    data[x][y] = 6;
+                    pinkCurrentHeadingCnt = 1;
+                    pinkCurrentPosition = [x, y];
+                } else if (c == 'O') {
+                    data[x][y] = 7;
+                    orangeCurrentHeadingCnt = 1;
+                    orangeCurrentPosition = [x, y];
                 } else {
                     data[x][y] = 0;
                 }
@@ -953,23 +1338,6 @@
             throw new Error("There is no starting point!");
         }
 
-        for(x=0;x<sizeX;x++) {
-            if (data[x][0] != 1) {
-                throw new Error("Boundary is not complete!");
-            }
-            if (data[x][sizeY-1] != 1) {
-                throw new Error("Boundary is not complete!");
-            }
-        }
-        for(y=0;y<sizeY;y++) {
-            if (data[0][y] != 1) {
-                throw new Error("Boundary is not complete!");
-            }
-            if (data[sizeX-1][y] != 1) {
-                throw new Error("Boundary is not complete!");
-            }
-        }
-
         return {
             sizeX: sizeX,
             sizeY: sizeY,
@@ -985,7 +1353,6 @@
         updateMazeMesh();
     }
     updateMaze();
-    $("#updateMazeButton").click(updateMaze);
 
     $("#webglCanvas").keydown(function (event) {
         if (event.keyCode == 37 && !inMotion && !inRotation) {
@@ -1023,41 +1390,28 @@
                 default:
                     console.log("ERROR, INVALID CASE");
             }
-            if (maze.data[newPosition[0]][newPosition[1]] != 1) {
-                animateToPosition = newPosition;
-                inMotion = true;
-                if (maze.data[newPosition[0]][newPosition[1]] == 2) {
-                    // Eat it!
-                    maze.data[newPosition[0]][newPosition[1]] = 0;
-                    updateMazeMeshObjects();
-                }
-            }
 
-        }
-        else if (event.keyCode == 40 && !inMotion && !inRotation){
-            // BACKWARD
-            var newPosition = [currentPosition[0], currentPosition[1]];
-            switch(currentHeadingCnt){
-                case 0:
-                    newPosition[0] -= 1;
-                    unitMotion = [-stepSize, 0];
-                    break;
-                case 1:
-                    newPosition[1] -= 1;
-                    unitMotion = [0, -stepSize];
-                    break;
-                case 2:
-                    newPosition[0] += 1;
-                    unitMotion = [stepSize, 0];
-                    break;
-                case 3:
-                    newPosition[1] += 1;
-                    unitMotion = [0, stepSize];
-                    break;
-                default:
-                    console.log("ERROR, INVALID CASE");
-            }
-            if (maze.data[newPosition[0]][newPosition[1]] != 1) {
+            if (newPosition[0] >= maze.sizeX) {
+                inMotion = true;
+                currentPosition[0] = -1;
+                animateToPosition[0] = 0;
+                animateToPosition[1] = currentPosition[1];
+            } else if (newPosition[0] < 0) {
+                inMotion = true;
+                currentPosition[0] = maze.sizeX;
+                animateToPosition[0] = maze.sizeX - 1;
+                animateToPosition[1] = currentPosition[1];
+            } else if (newPosition[1] >= maze.sizeY) {
+                inMotion = true;
+                currentPosition[1] = -1;
+                animateToPosition[0] = currentPosition[0];
+                animateToPosition[1] = 0;
+            } else if (newPosition[1] < 0) {
+                inMotion = true;
+                currentPosition[1] = maze.sizeY;
+                animateToPosition[0] = currentPosition[0];
+                animateToPosition[1] = maze.sizeY - 1;
+            } else if (maze.data[newPosition[0]][newPosition[1]] != 1) {
                 animateToPosition = newPosition;
                 inMotion = true;
                 if (maze.data[newPosition[0]][newPosition[1]] == 2) {
@@ -1070,6 +1424,253 @@
         return false;
     });
 </script>
+<script>
+    // ReD
+    setInterval(function() {
+        if (redInMotion || redInRotation) return;
+        var newPosition = [redCurrentPosition[0], redCurrentPosition[1]];
+        switch(redCurrentHeadingCnt){
+            case 0:
+                newPosition[0] += 1;
+                redUnitMotion = [redStepSize, 0];
+                break;
+            case 1:
+                newPosition[1] += 1;
+                redUnitMotion = [0, redStepSize];
+                break;
+            case 2:
+                newPosition[0] -= 1;
+                redUnitMotion = [-redStepSize, 0];
+                break;
+            case 3:
+                newPosition[1] -= 1;
+                redUnitMotion = [0, -redStepSize];
+                break;
+            default:
+                console.log("ERROR, INVALID CASE");
+        }
 
+        if (newPosition[0] >= maze.sizeX) {
+            redCurrentPosition[0] = -1.;
+            redAnimateToPosition[0] = 0.;
+            redAnimateToPosition[1] = redCurrentPosition[1];
+            redInMotion = true;
+        } else if (newPosition[0] < 0.) {
+            redCurrentPosition[0] = maze.sizeX;
+            redAnimateToPosition[0] = maze.sizeX - 1.;
+            redAnimateToPosition[1] = redCurrentPosition[1];
+            redInMotion = true;
+        } else if (newPosition[1] >= maze.sizeY) {
+            redCurrentPosition[1] = -1.;
+            redAnimateToPosition[0] = redCurrentPosition[0];
+            redAnimateToPosition[1] = 0.;
+            redInMotion = true;
+        } else if (newPosition[1] < 0.) {
+            redCurrentPosition[1] = maze.sizeY;
+            redAnimateToPosition[0] = redCurrentPosition[0];
+            redAnimateToPosition[1] = maze.sizeY - 1.;
+            redInMotion = true;
+        } else if (maze.data[newPosition[0]][newPosition[1]] != 1) {
+            redAnimateToPosition = newPosition;
+            redInMotion = true;
+        } else {
+            leftOrRight = Math.floor(Math.random()*2);
+            redInRotation = true;
+            if(leftOrRight == 0) {
+                redTargetHeadingCnt = (redCurrentHeadingCnt + 1);
+                redUnitRotation = redStepSize;
+            } else {
+                redTargetHeadingCnt = (redCurrentHeadingCnt - 1);
+                redUnitRotation = -redStepSize;
+            }
+        }
+    }, 50);
+</script> 
+<script>
+    // Pink
+    setInterval(function() {
+        if (pinkInMotion || pinkInRotation) return;
+        var newPosition = [pinkCurrentPosition[0], pinkCurrentPosition[1]];
+        switch(pinkCurrentHeadingCnt){
+            case 0:
+                newPosition[0] += 1;
+                pinkUnitMotion = [pinkStepSize, 0];
+                break;
+            case 1:
+                newPosition[1] += 1;
+                pinkUnitMotion = [0, pinkStepSize];
+                break;
+            case 2:
+                newPosition[0] -= 1;
+                pinkUnitMotion = [-pinkStepSize, 0];
+                break;
+            case 3:
+                newPosition[1] -= 1;
+                pinkUnitMotion = [0, -pinkStepSize];
+                break;
+            default:
+                console.log("ERROR, INVALID CASE");
+        }
+
+        if (newPosition[0] >= maze.sizeX) {
+            pinkCurrentPosition[0] = -1.;
+            pinkAnimateToPosition[0] = 0.;
+            pinkAnimateToPosition[1] = pinkCurrentPosition[1];
+            pinkInMotion = true;
+        } else if (newPosition[0] < 0.) {
+            pinkCurrentPosition[0] = maze.sizeX;
+            pinkAnimateToPosition[0] = maze.sizeX - 1.;
+            pinkAnimateToPosition[1] = pinkCurrentPosition[1];
+            pinkInMotion = true;
+        } else if (newPosition[1] >= maze.sizeY) {
+            pinkCurrentPosition[1] = -1.;
+            pinkAnimateToPosition[0] = pinkCurrentPosition[0];
+            pinkAnimateToPosition[1] = 0.;
+            pinkInMotion = true;
+        } else if (newPosition[1] < 0.) {
+            pinkCurrentPosition[1] = maze.sizeY;
+            pinkAnimateToPosition[0] = pinkCurrentPosition[0];
+            pinkAnimateToPosition[1] = maze.sizeY - 1.;
+            pinkInMotion = true;
+        } else if (maze.data[newPosition[0]][newPosition[1]] != 1) {
+            pinkAnimateToPosition = newPosition;
+            pinkInMotion = true;
+        } else {
+            leftOrRight = Math.floor(Math.random()*2);
+            pinkInRotation = true;
+            if(leftOrRight == 0) {
+                pinkTargetHeadingCnt = (pinkCurrentHeadingCnt + 1);
+                pinkUnitRotation = pinkStepSize;
+            } else {
+                pinkTargetHeadingCnt = (pinkCurrentHeadingCnt - 1);
+                pinkUnitRotation = -pinkStepSize;
+            }
+        }
+    }, 50);
+</script> 
+<script>
+    // Blue
+    setInterval(function() {
+        if (blueInMotion || blueInRotation) return;
+        var newPosition = [blueCurrentPosition[0], blueCurrentPosition[1]];
+        switch(blueCurrentHeadingCnt){
+            case 0:
+                newPosition[0] += 1;
+                blueUnitMotion = [blueStepSize, 0];
+                break;
+            case 1:
+                newPosition[1] += 1;
+                blueUnitMotion = [0, blueStepSize];
+                break;
+            case 2:
+                newPosition[0] -= 1;
+                blueUnitMotion = [-blueStepSize, 0];
+                break;
+            case 3:
+                newPosition[1] -= 1;
+                blueUnitMotion = [0, -blueStepSize];
+                break;
+            default:
+                console.log("ERROR, INVALID CASE");
+        }
+
+        if (newPosition[0] >= maze.sizeX) {
+            blueCurrentPosition[0] = -1.;
+            blueAnimateToPosition[0] = 0.;
+            blueAnimateToPosition[1] = blueCurrentPosition[1];
+            blueInMotion = true;
+        } else if (newPosition[0] < 0.) {
+            blueCurrentPosition[0] = maze.sizeX;
+            blueAnimateToPosition[0] = maze.sizeX - 1.;
+            blueAnimateToPosition[1] = blueCurrentPosition[1];
+            blueInMotion = true;
+        } else if (newPosition[1] >= maze.sizeY) {
+            blueCurrentPosition[1] = -1.;
+            blueAnimateToPosition[0] = blueCurrentPosition[0];
+            blueAnimateToPosition[1] = 0.;
+            blueInMotion = true;
+        } else if (newPosition[1] < 0.) {
+            blueCurrentPosition[1] = maze.sizeY;
+            blueAnimateToPosition[0] = blueCurrentPosition[0];
+            blueAnimateToPosition[1] = maze.sizeY - 1.;
+            blueInMotion = true;
+        } else if (maze.data[newPosition[0]][newPosition[1]] != 1) {
+            blueAnimateToPosition = newPosition;
+            blueInMotion = true;
+        } else {
+            leftOrRight = Math.floor(Math.random()*2);
+            blueInRotation = true;
+            if(leftOrRight == 0) {
+                blueTargetHeadingCnt = (blueCurrentHeadingCnt + 1);
+                blueUnitRotation = blueStepSize;
+            } else {
+                blueTargetHeadingCnt = (blueCurrentHeadingCnt - 1);
+                blueUnitRotation = -blueStepSize;
+            }
+        }
+    }, 50);
+</script> 
+<script>
+    // Orange
+    setInterval(function() {
+        if (orangeInMotion || orangeInRotation) return;
+        var newPosition = [orangeCurrentPosition[0], orangeCurrentPosition[1]];
+        switch(orangeCurrentHeadingCnt){
+            case 0:
+                newPosition[0] += 1;
+                orangeUnitMotion = [orangeStepSize, 0];
+                break;
+            case 1:
+                newPosition[1] += 1;
+                orangeUnitMotion = [0, orangeStepSize];
+                break;
+            case 2:
+                newPosition[0] -= 1;
+                orangeUnitMotion = [-orangeStepSize, 0];
+                break;
+            case 3:
+                newPosition[1] -= 1;
+                orangeUnitMotion = [0, -orangeStepSize];
+                break;
+            default:
+                console.log("ERROR, INVALID CASE");
+        }
+
+        if (newPosition[0] >= maze.sizeX) {
+            orangeCurrentPosition[0] = -1.;
+            orangeAnimateToPosition[0] = 0.;
+            orangeAnimateToPosition[1] = orangeCurrentPosition[1];
+            orangeInMotion = true;
+        } else if (newPosition[0] < 0.) {
+            orangeCurrentPosition[0] = maze.sizeX;
+            orangeAnimateToPosition[0] = maze.sizeX - 1.;
+            orangeAnimateToPosition[1] = orangeCurrentPosition[1];
+            orangeInMotion = true;
+        } else if (newPosition[1] >= maze.sizeY) {
+            orangeCurrentPosition[1] = -1.;
+            orangeAnimateToPosition[0] = orangeCurrentPosition[0];
+            orangeAnimateToPosition[1] = 0.;
+            orangeInMotion = true;
+        } else if (newPosition[1] < 0.) {
+            orangeCurrentPosition[1] = maze.sizeY;
+            orangeAnimateToPosition[0] = orangeCurrentPosition[0];
+            orangeAnimateToPosition[1] = maze.sizeY - 1.;
+            orangeInMotion = true;
+        } else if (maze.data[newPosition[0]][newPosition[1]] != 1) {
+            orangeAnimateToPosition = newPosition;
+            orangeInMotion = true;
+        } else {
+            leftOrRight = Math.floor(Math.random()*2);
+            orangeInRotation = true;
+            if(leftOrRight == 0) {
+                orangeTargetHeadingCnt = (orangeCurrentHeadingCnt + 1);
+                orangeUnitRotation = orangeStepSize;
+            } else {
+                orangeTargetHeadingCnt = (orangeCurrentHeadingCnt - 1);
+                orangeUnitRotation = -orangeStepSize;
+            }
+        }
+    }, 50);
+</script> 
 </body>
 </html>
